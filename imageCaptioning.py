@@ -9,6 +9,7 @@ import tkinter as tk
 from tkinter import filedialog
 from tkinter import messagebox
 from tkinter import ttk
+from Model import CNN, DecoderRNN
 
 # File e directory
 model_file = 'cnn_rnn_model.pth'
@@ -37,39 +38,7 @@ with open(vocab_file, 'r') as f:
     vocab = json.load(f)
 inv_vocab = {v: k for k, v in vocab.items()}
 
-# Encoder CNN
-class CNN(nn.Module):
-    def __init__(self, embed_size):
-        super(CNN, self).__init__()
-        efficient_net = efficientnet_b3(weights=EfficientNet_B3_Weights.IMAGENET1K_V1)  # Inizializza EfficientNet-B3 con pesi pre-addestrati
-        for param in efficient_net.parameters():
-            param.requires_grad = False  # Congela i parametri della rete pre-addestrata per evitare modifiche durante l'addestramento
-        modules = list(efficient_net.children())[:-1]  # Escludi l'ultimo layer di  classificazione
-        self.efficient_net = nn.Sequential(*modules)  # Usa i moduli rimanenti come estrattore di caratteristiche
-        self.embed = nn.Linear(1536, embed_size)  # Layer lineare per mappare le caratteristiche a una dimensione di embedding specificata
 
-    def forward(self, image):
-        features = self.efficient_net(image)  # Estrai le caratteristiche dall'immagine
-        features = features.view(features.size(0), -1)  # Appiattisci le caratteristiche per il layer lineare
-        features = self.embed(features)  # Applica il layer lineare per ottenere l'embedding dell'immagine
-        return features
-
-# Decoder LSTM
-class DecoderRNN(nn.Module):
-    def __init__(self, embed_size, hidden_size, vocab_size, num_layers=1):
-        super(DecoderRNN, self).__init__()
-        self.hidden_size = hidden_size
-        self.embed = nn.Embedding(vocab_size, embed_size)  # Layer di embedding per le parole
-        self.lstm = nn.LSTM(embed_size, hidden_size, num_layers, batch_first=True)  # LSTM per generare sequenze
-        self.linear = nn.Linear(hidden_size, vocab_size)  # Layer lineare per predire la parola successiva
-        self.hidden = (torch.zeros(1, 1, hidden_size), torch.zeros(1, 1, hidden_size))  # Stato iniziale nascosto e cella per LSTM
-
-    def forward(self, features, captions):
-        cap_embedding = self.embed(captions[:, :-1])  # Embedding delle parole nella didascalia
-        embeddings = torch.cat((features.unsqueeze(dim=1), cap_embedding), dim=1)  # Combina le caratteristiche dell'immagine con l'embedding delle parole
-        lstm_out, self.hidden = self.lstm(embeddings)  # Passa attraverso LSTM
-        outputs = self.linear(lstm_out)  # Ottieni le probabilità per ogni parola del vocabolario
-        return outputs
 
 # Carica e preprocessa l'immagine
 def preprocess_image(file_path):
@@ -155,8 +124,8 @@ caption_label.pack(pady=10)  # Aggiungi la label alla finestra con un margine ve
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # Usa la GPU se disponibile altrimenti usa la CPU
 
 # Inizializza e carica i pesi dei modelli
-encoder = CNN(embed_size=256).to(device)  # Crea l'encoder CNN e spostalo sul dispositivo
-decoder = DecoderRNN(embed_size=256, hidden_size=512, vocab_size=len(vocab)).to(device)  # Crea il decoder RNN e spostalo sul dispositivo
+encoder = CNN(embed_size=512).to(device)  # Crea l'encoder CNN e spostalo sul dispositivo
+decoder = DecoderRNN(embed_size=512, hidden_size=512, vocab_size=len(vocab)).to(device)  # Crea il decoder RNN e spostalo sul dispositivo
 
 checkpoint = torch.load(model_file, map_location=device)  # Carica lo stato del modello dal file
 encoder.load_state_dict(checkpoint['encoder_state_dict'])  # Carica i pesi dell'encoder
